@@ -3,7 +3,7 @@ import pandas as pd
 import random
 import os
 # Variable for the data file name
-DATA_FILENAME = "database.csv"
+DATA_FILENAME = "recommendations.csv"
 
 # function to get the path of the database file
 def get_database_path(filename=DATA_FILENAME):
