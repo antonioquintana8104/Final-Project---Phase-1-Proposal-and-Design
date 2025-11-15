@@ -1,143 +1,184 @@
+# import all of the needed libraries
 import pandas as pd
 import random
 import os
+# Variable for the data file name
+DATA_FILENAME = "database.csv"
 
-def open_file_function():
-    current_directory = os.path.dirname(__file__)
-    file = os.path.join(current_directory, "database.xlsx")
-    return file
+# function to get the path of the database file
+def get_database_path(filename=DATA_FILENAME):
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, filename)
+# Function to validate yes/no input
+def validate_yes_no(prompt):
+    while True:
+        response = input(prompt).strip().lower()
+        if response in ["yes", "no", "si"]:
+            return "yes" if response in ["yes", "si"] else "no"
+        print("Invalid input. Enter yes or no.")
 
-print("Welcome to the Culture Library, here you can find culturally rich recommendations for music, books, and movies!")
+def clean_rating_string(value):
+    if pd.isna(value):
+        return ""
 
-# Ask for and validate user name
-while True:
-    name = input("Please enter your name: ").strip()
-    if name.replace(" ", "").isalpha():
-        break
-    else:
+    if isinstance(value, float) or isinstance(value, int):
+        return str(float(value))
+
+    # value is string
+    parts = str(value).split(",")
+    clean_list = []
+
+    for p in parts:
+        p = p.strip()
+        if p == "":
+            continue
+        try:
+            clean_list.append(str(float(p)))
+        except:
+            continue
+
+    return ",".join(clean_list)
+
+# Calculate average rating
+def calculate_average_rating(rating_string):
+    if rating_string is None or rating_string == "" or pd.isna(rating_string):
+        return None, 0
+    try:
+        parts = [float(x) for x in rating_string.split(",") if x.strip() != ""]
+    except:
+        return None, 0
+
+    if len(parts) == 0:
+        return None, 0
+
+    return sum(parts) / len(parts), len(parts)
+
+
+# Main functions
+def main():
+
+    print("Welcome to the Culture Library, here you can find culturally rich recommendations for music, books, and movies!")
+
+    # Input name
+    while True:
+        user_name = input("Please enter your name: ").strip()
+        if user_name.replace(" ", "").isalpha():
+            break
         print("Invalid input. Please enter a valid name (letters only).")
 
-# Main program loop
-while True:
-    # Ask for type of media
-    media = input(f"\nHi {name}, what type of media are you interested in? (song/book/movie): ").strip().lower()
-
-    # Ask if they want something new
-    visit = input("Are you interested in something new? (yes/no): ").strip().lower()
-
-    # Ask if they want specific genre recommendations
-    specific = input("Would you like a more specific recommendation? (yes/no): ").strip().lower()
-
-    # Load the Excel database
-    df = pd.read_excel(open_file_function())
-
-    # If they want something specific
-    if specific == "yes":
-        # Get genres available for the selected media
-        available_genres = df[df["Type of media"].astype(str).str.lower().str.strip() == media]["Genre"].unique()
-
-        if len(available_genres) == 0:
-            print("\nSorry, no genre information is available for this media type.")
-            # Default filtering (no genre filter)
-            filtered_df = df[df["Type of media"].astype(str).str.lower().str.strip() == media]
-
-        else:
-           print("\nAvailable genres:")
-           genre_dict = {} 
-
-           for i, g in enumerate(available_genres, start=1):
-             print(f"{i}. {g}")
-             genre_dict[i] = g
-
-        # Ask user for a number
-        while True:
+    while True:
+        # Load CSV file
+        try:
             try:
-                choice_num = int(input("\nEnter the number of the genre you want: "))
-                if choice_num in genre_dict:
-                    break
-                else:
-                    print("Please choose a valid number.")
-            except ValueError:
-                print("Invalid input. Enter a number.")
+                df = pd.read_csv(DATA_FILENAME)
+            except FileNotFoundError:
+                df = pd.read_csv(get_database_path())
+        except Exception as e:
+            print("Could not load database.csv")
+            print("Make sure it is in the SAME folder as this script.")
+            print("Details:", e)
+            return
 
-        genre_choice = genre_dict[choice_num].lower().strip()
+        # filter rating column
+        df["Rating"] = df["Rating"].apply(clean_rating_string)
 
-        # Filter by media AND genre
-        filtered_df = df[
-            (df["Type of media"].astype(str).str.lower().str.strip() == media) &
-            (df["Genre"].astype(str).str.lower().str.strip() == genre_choice)
-       ]
-    else:
-        # No specific genre requested → normal filter by media only
-        filtered_df = df[df["Type of media"].astype(str).str.lower().str.strip() == media]
+        # Ask media type
+        while True:
+            media_input = input(f"\nHi {user_name}, what type of media? (music/books/movies): ").strip().lower()
+            if media_input in ["music", "song"]:
+                media_type = "song"
+                break
+            if media_input in ["books", "book"]:
+                media_type = "book"
+                break
+            if media_input in ["movies", "movie"]:
+                media_type = "movie"
+                break
+            print("Invalid input. Please enter music, books, or movies.")
 
-    # If they want something new (unrated)
-    if visit == "yes":
-        filtered_df = filtered_df[filtered_df["Rating"].isna()]
-    # Load the Excel database
-    df = pd.read_excel(open_file_function())
+        want_new = validate_yes_no("Do you want something with no rating yet? (yes/no): ")
+        want_specific = validate_yes_no("Do you want to filter by genre? (yes/no): ")
+        df["Type of media"] = df["Type of media"].astype(str).str.lower().str.strip()
+        filtered = df[df["Type of media"] == media_type]
 
-    # Filter by type of media
-    filtered_df = df[df["Type of media"].astype(str).str.lower().str.strip() == media]
+        # Genre filter
+        if want_specific == "yes":
+            all_genres = filtered["Genre"].astype(str).str.strip().unique()
+            all_genres = [g for g in all_genres if g.lower() != "nan"]
 
-    # If they want something new, filter to items with no rating
-    if visit == "yes":
-        filtered_df = filtered_df[filtered_df["Rating"].isna()]
-
-    # If there are no results, notify the user
-    if filtered_df.empty:
-        print(f"\nSorry, no {media} met the criteria.")
-    else:
-        # Pick one random recommendation
-        random_row = filtered_df.sample(n=1).iloc[0]
-
-        # Display all information
-        print("\nHere's a random recommendation:")
-        print(f"\nName: {random_row['Name']}")
-        print(f"Genre: {random_row['Genre']}")
-        print(f"Description: {random_row['Description']}")
-        print(f"Info: {random_row['Info']}")
-
-        # Show average rating if available
-        ratings = random_row["Rating"]
-        if pd.notna(ratings):
-            rating_list = [float(r.strip()) for r in str(ratings).split(",") if r.strip()]
-            avg_rating = sum(rating_list) / len(rating_list)
-            print(f"\nAverage rating: {round(avg_rating, 2)} ({len(rating_list)} ratings)")
-        else:
-            print("\nNo ratings yet.")
-
-        # Ask if the user wants to rate
-        rate = input("\nWould you like to rate this recommendation? (yes/no): ").strip().lower()
-        if rate == "yes":
-            while True:
-                try:
-                    rating = float(input("Enter your rating (1–5): "))
-                    if 1 <= rating <= 5:
-                        break
-                    else:
-                        print("Please enter a number between 1 and 5.")
-                except ValueError:
-                    print("Invalid input. Please enter a number.")
-
-            # Get the current ratings (if any)
-            current_ratings = df.loc[df["Name"] == random_row["Name"], "Rating"].values[0]
-
-            # Append or create new ratings list
-            if pd.isna(current_ratings):
-                new_ratings = str(rating)
+            if len(all_genres) == 0:
+                print("No genre data available.")
             else:
-                new_ratings = f"{current_ratings},{rating}"
+                print("\nAvailable genres:")
+                genre_dict = {}
+                for i, g in enumerate(all_genres, start=1):
+                    print(f"{i}. {g}")
+                    genre_dict[i] = g
+                # Ask the user to choose a genre by number
+                while True:
+                    try:
+                        n = int(input("Choose a genre by its number: "))
+                        if n in genre_dict:
+                            break
+                        print("Invalid number. Please input a number between 1-3.")
+                    except:
+                        print("Enter a number.")
+                genre_choice = genre_dict[n].lower().strip()
+                filtered = filtered[filtered["Genre"].astype(str).str.lower().str.strip() == genre_choice]
 
-            # Save back to DataFrame
-            df.loc[df["Name"] == random_row["Name"], "Rating"] = new_ratings
+        if want_new == "yes":
+            filtered = filtered[filtered["Rating"] == ""]
 
-            # Save updated file
-            df.to_excel(open_file_function(), index=False)
-            print(f"\nYour rating of {rating} has been added for {random_row['Name']}.")
+        if filtered.empty:
+            print("\nNo items match your criteria.")
+        else:
+            # Randomly select an item
+            item = filtered.sample(n=1).iloc[0]
+            # Display recommendation
+            print("\nRecommendation")
+            print("Name:", item["Name"])
+            print("Type:", item["Type of media"])
+            print("Genre:", item["Genre"])
+            print("Description:", item["Description"])
+            print("Info:", item["Info"])
+            # Show average rating
+            avg, count = calculate_average_rating(item["Rating"])
+            if avg is not None:
+                print(f"Average Rating: {round(avg,2)} ({count} ratings)")
+            else:
+                print("No ratings yet.")
 
-    # Ask if the user wants another recommendation
-    another = input("\nWould you like another recommendation? (yes/no): ").strip().lower()
-    if another != "yes":
-        print("\nThank you for using the Culture Library. Goodbye!")
-        break
+            # Rating system and validation
+            if validate_yes_no("Would you like to rate this item? (yes/no): ") == "yes":
+                while True:
+                    try:
+                        r = float(input("Enter rating (1–5): "))
+                        if 1 <= r <= 5:
+                            break
+                        print("Enter a number between 1 and 5.")
+                    except:
+                        print("Invalid number. PLease input a valid number.")
+                # Update rating in DataFrame
+                old = item["Rating"]
+                new_rating = str(r)
+
+                if old == "" or pd.isna(old):
+                    updated = new_rating
+                else:
+                    updated = old + "," + new_rating
+
+                df.loc[df["Name"] == item["Name"], "Rating"] = updated
+                # Save back to CSV
+                try:
+                    df.to_csv(DATA_FILENAME, index=False)
+                    print("Rating saved!")
+                except Exception as e:
+                    print("Error saving file:", e)
+        # Ask the user if they want another recommendation
+        if validate_yes_no("Another recommendation? (yes/no): ") == "no":
+            print("Thank you for using the Culture Library. Goodbye!")
+            break
+
+
+if __name__ == "__main__":
+    main()
